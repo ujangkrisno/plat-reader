@@ -16,30 +16,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['foto'])) {
             if ($img) {
                 $fname = 'captured_1_upload_' . date('Ymd_His') . '.jpg';
                 $fpath = __DIR__ . '/captures/' . $fname;
-                imagejpeg($img, $fpath, 90);
+                imagejpeg($img, $fpath, 95);
                 imagedestroy($img);
 
-                // Call streamer OCR on this file
-                $ocr_url = "http://127.0.0.1:8093/ocr_path/1";
-                $ctx = stream_context_create(['http' => ['timeout' => 60]]);
+                // Call Python OCR directly via PHP (bypass streamer)
+                $ocr_url = "http://127.0.0.1:8092/ocr_direct.php?cam=1";
+                $ctx = stream_context_create(['http' => ['timeout' => 120]]);
                 $json = @file_get_contents($ocr_url, false, $ctx);
 
                 if ($json) {
                     $data = json_decode($json, true);
-                    if ($data && $data['plate']) {
-                        $plate_found = $data['plate'];
-                        $conf = $data['confidence'];
-                    }
-                    if ($data && !empty($data['ocr_log'])) {
-                        $ocr_texts = $data['ocr_log'];
-                    }
-                    if ($data && isset($data['error'])) {
-                        $result = 'error: ' . $data['error'];
-                    } else {
+                    if ($data && empty($data['error'])) {
+                        if ($data['plate']) {
+                            $plate_found = $data['plate'];
+                            $conf = $data['confidence'];
+                        }
+                        if (!empty($data['ocr_log'])) {
+                            $ocr_texts = $data['ocr_log'];
+                        }
                         $result = $fname;
+                    } else {
+                        $result = ($data['error'] ?? 'Unknown error');
                     }
                 } else {
-                    $result = 'Gagal hubungi streamer (port 8093)';
+                    $result = 'Gagal proses OCR (PHP->Python)';
                 }
             } else {
                 $result = 'Gagal membaca file gambar';
