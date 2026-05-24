@@ -161,6 +161,11 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             if frame is None:
                 self.send_error(500, 'No frame available')
                 return
+            # Auto-brightness for dark frames
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if gray.mean() < 80:
+                alpha = 120 / max(gray.mean(), 1)
+                frame = cv2.convertScaleAbs(frame, alpha=min(alpha, 3.0), beta=20)
             # Draw detection box on the frame
             plate_info = detected_plates.get(cam_id)
             if plate_info and (time.time() - plate_info['time']) < 10:
@@ -316,6 +321,12 @@ def process_frame(frame, camera_id, timestamp):
     if w > 1280:
         scale = 1280 / w
         frame = cv2.resize(frame, (int(w*scale), int(h*scale)))
+    # Auto brightness/contrast for dark frames
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    mean_brightness = gray.mean()
+    if mean_brightness < 80:
+        alpha = 120 / max(mean_brightness, 1)
+        frame = cv2.convertScaleAbs(frame, alpha=min(alpha, 3.0), beta=20)
     results = get_ocr().readtext(frame)
     best_plate = None
     best_conf = 0
