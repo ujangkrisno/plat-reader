@@ -88,9 +88,10 @@ body{background:#0f1923;color:#fff;font-family:'Segoe UI',sans-serif}
           <div id="preview" class="mt-3" style="display:none">
             <img id="previewImg" style="max-width:100%;max-height:400px;border-radius:8px;">
           </div>
-          <button type="submit" class="btn btn-warning btn-lg mt-3 w-100" id="btnUpload">
+          <button type="submit" class="btn btn-warning btn-lg mt-3 w-100" id="btnUpload" style="display:none">
             <i class="fas fa-microchip"></i> PROSES OCR
           </button>
+          <div id="autoStatus" class="text-info mt-2" style="display:none"><i class="fas fa-spinner fa-spin"></i> Memproses OCR...</div>
         </form>
       </div>
 
@@ -156,6 +157,10 @@ document.getElementById('fileInput').onchange = function(e){
   r.onload = function(ev){ document.getElementById('previewImg').src = ev.target.result; };
   r.readAsDataURL(f);
   document.getElementById('preview').style.display = 'block';
+  document.getElementById('autoStatus').style.display = 'block';
+  document.getElementById('dropzone').style.display = 'none';
+  // Auto-submit form
+  this.form.submit();
 };
 </script>
 </body>
