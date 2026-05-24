@@ -71,9 +71,13 @@ def capture_loop(cam_id):
             with lock:
                 cap = cameras.get(cam_id)
                 if cap is None:
-                    time.sleep(1)
+                    cap = None
+                if cap is None:
                     continue
                 ret, frame = cap.read()
+            if cap is None:
+                time.sleep(1)
+                continue
             if ret:
                 latest_frames[cam_id] = frame
         except Exception as e:
