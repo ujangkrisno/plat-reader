@@ -11,30 +11,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['foto'])) {
     if ($file['error'] === UPLOAD_ERR_OK) {
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
-            $fname = 'captured_1_upload_' . date('Ymd_His') . '.jpg';
-            $fpath = __DIR__ . '/captures/' . $fname;
-            move_uploaded_file($file['tmp_name'], $fpath);
+            // Konversi ke JPG murni (hapus alpha channel jika PNG)
+            $img = @imagecreatefromstring(file_get_contents($file['tmp_name']));
+            if ($img) {
+                $fname = 'captured_1_upload_' . date('Ymd_His') . '.jpg';
+                $fpath = __DIR__ . '/captures/' . $fname;
+                imagejpeg($img, $fpath, 90);
+                imagedestroy($img);
 
-            // Call streamer OCR on this file
-            $ocr_url = "http://127.0.0.1:8093/ocr_path/1";
-            $ctx = stream_context_create(['http' => ['timeout' => 60]]);
-            $json = @file_get_contents($ocr_url, false, $ctx);
+                // Call streamer OCR on this file
+                $ocr_url = "http://127.0.0.1:8093/ocr_path/1";
+                $ctx = stream_context_create(['http' => ['timeout' => 60]]);
+                $json = @file_get_contents($ocr_url, false, $ctx);
 
-            if ($json) {
-                $data = json_decode($json, true);
-                if ($data['plate']) {
-                    $plate_found = $data['plate'];
-                    $conf = $data['confidence'];
+                if ($json) {
+                    $data = json_decode($json, true);
+                    if ($data && $data['plate']) {
+                        $plate_found = $data['plate'];
+                        $conf = $data['confidence'];
+                    }
+                    if ($data && !empty($data['ocr_log'])) {
+                        $ocr_texts = $data['ocr_log'];
+                    }
+                    if ($data && isset($data['error'])) {
+                        $result = 'error: ' . $data['error'];
+                    } else {
+                        $result = $fname;
+                    }
+                } else {
+                    $result = 'Gagal hubungi streamer (port 8093)';
                 }
-                if (!empty($data['ocr_log'])) {
-                    $ocr_texts = $data['ocr_log'];
-                }
-                $result = $fname;
             } else {
-                $result = 'error_streamer';
+                $result = 'Gagal membaca file gambar';
             }
         } else {
-            $result = 'error_format';
+            $result = 'Format file tidak didukung (hanya JPG/PNG)';
         }
     }
 }
@@ -106,10 +117,15 @@ body{background:#0f1923;color:#fff;font-family:'Segoe UI',sans-serif}
         </div>
         <?php endif; ?>
 
-        <?php if ($result && $result !== 'error_streamer' && $result !== 'error_format'): ?>
+        <?php
+        $is_error = $result && (strpos($result, 'error') === 0 || strpos($result, 'Gagal') === 0);
+        if ($result && !$is_error):
+        ?>
         <div class="text-center mt-2">
           <img src="captures/<?= $result ?>" style="max-width:100%;max-height:300px;border-radius:8px;">
         </div>
+        <?php elseif ($is_error): ?>
+        <div class="alert alert-danger mt-3"><?= $result ?></div>
         <?php endif; ?>
 
         <?php if ($ocr_texts): ?>

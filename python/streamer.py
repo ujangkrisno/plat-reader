@@ -221,12 +221,22 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             candidates = [f for f in os.listdir(captured_dir) if f.startswith(f'captured_{cam_id}_') and f.endswith('.jpg')]
             candidates.sort(reverse=True)
             if not candidates:
-                self.send_error(404, 'No captured image')
+                err = json.dumps({'error': 'No captured image'}).encode()
+                self.send_response(404)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
                 return
             fpath = os.path.join(captured_dir, candidates[0])
             frame = cv2.imread(fpath)
             if frame is None:
-                self.send_error(500, 'Cannot read image')
+                err = json.dumps({'error': 'Cannot read image file'}).encode()
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
                 return
             ts = datetime.datetime.now()
             plate, conf, bbox = process_frame(frame, cam_id, ts)
@@ -291,7 +301,17 @@ def save_plate(camera_id, plat, confidence, filename):
             try: db.close()
             except: pass
 
+def ensure_3channel(img):
+    if img is None: return None
+    if len(img.shape) == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if img.shape[2] == 4:
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+    return img
+
 def process_frame(frame, camera_id, timestamp):
+    frame = ensure_3channel(frame)
+    if frame is None: return None, 0, None
     h, w = frame.shape[:2]
     if w > 1280:
         scale = 1280 / w
