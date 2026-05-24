@@ -8,18 +8,23 @@
 <style>
 body{background:#0f1923;color:#fff;font-family:'Segoe UI',sans-serif}
 .navbar{background:linear-gradient(90deg,#0d2137,#1a3a5c)}
-.card{background:#1a2a3a;border:1px solid #2a3a4a;border-radius:12px;padding:20px;margin-bottom:15px}
+.card{background:#1a2a3a;border:1px solid #2a3a4a;border-radius:12px;padding:20px;margin:10px 0}
 .pre-box{background:#0a121c;color:#00e5ff;padding:15px;border-radius:8px;font-family:monospace;max-height:300px;overflow:auto;font-size:13px}
-.pre-box .plate{color:#00e676}
-.pre-box .no-plate{color:#667788}
 .plate-result{font-size:1.6rem;font-weight:bold;text-align:center;padding:15px;border-radius:12px;margin:10px 0}
 .plate-found{background:#004d26;border:2px solid #00e676;color:#00e676}
 .plate-none{background:#2a1520;border:2px solid #ff5252;color:#ff5252}
-.upload-area{border:2px dashed #2a3a4a;border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:0.3s}
-.upload-area:hover{border-color:#ffab00;background:#1a2a3a}
-.upload-area.processing{pointer-events:none;opacity:0.5}
-#resultArea{display:none}
-#statusBar{height:4px;background:#ffab00;border-radius:2px;transition:width 0.3s;width:0%;margin:8px 0}
+.upload-btn{background:#ffab00;color:#000;border:none;padding:16px 20px;border-radius:12px;font-weight:bold;font-size:1.1rem;width:100%;cursor:pointer;transition:0.3s}
+.upload-btn:hover{background:#ffc107;transform:scale(1.02)}
+.upload-btn:disabled{background:#555;cursor:wait;transform:none}
+.ocr-btn{background:#00bcd4;color:#000;border:none;padding:14px 20px;border-radius:12px;font-weight:bold;font-size:1.1rem;width:100%;cursor:pointer;transition:0.3s;margin-top:8px}
+.ocr-btn:hover{background:#26c6da;transform:scale(1.02)}
+.ocr-btn:disabled{background:#555;cursor:wait;transform:none}
+#preview{max-width:100%;max-height:350px;border-radius:8px;margin:10px 0;display:none}
+#loading{display:none;text-align:center;padding:30px}
+#loading .spinner{width:50px;height:50px;border:4px solid #2a3a4a;border-top:4px solid #ffab00;border-radius:50%;animation:spin 1s linear infinite;margin:10px auto}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.progress-track{height:4px;background:#2a3a4a;border-radius:2px;margin:10px 0;overflow:hidden}
+.progress-bar{height:100%;background:linear-gradient(90deg,#ffab00,#00e676);width:0%;transition:width 0.5s}
 </style>
 </head>
 <body>
@@ -31,142 +36,115 @@ body{background:#0f1923;color:#fff;font-family:'Segoe UI',sans-serif}
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-md-8">
-
       <div class="card text-center">
-        <h5 class="fw-bold mb-3">Foto Plat Nomor Pakai HP</h5>
-        <p class="text-muted small">
-          Buka dari HP: <code>http://192.168.1.12:8092/upload_test.php</code><br>
-          Foto plat → langsung diproses → hasil muncul.
+        <p class="text-muted small mb-3">
+          Buka dari HP: <code style="color:#ffab00">http://192.168.1.12:8092/upload_test.php</code>
 
-        <label class="upload-area d-block" id="dropzone">
-          <i class="fas fa-camera" style="font-size:3rem;color:#ffab00"></i>
-          <p class="mt-2 mb-0"><strong>Tap untuk foto / pilih gambar</strong></p>
-          <small class="text-muted">Kamera belakang otomatis</small>
-          <input type="file" accept="image/*" capture="environment" style="display:none" id="fileInput">
-        </label>
+        <form method="post" enctype="multipart/form-data" id="uploadForm">
+          <button type="button" class="upload-btn" id="pickBtn" onclick="document.getElementById('fileInput').click()">
+            <i class="fas fa-camera me-2"></i> AMBIL FOTO
+          </button>
+          <input type="file" name="foto" accept="image/*" id="fileInput" style="display:none">
 
-        <div id="statusBar"></div>
-        <div id="statusText" class="text-info small mt-2" style="display:none">
-          <i class="fas fa-spinner fa-spin"></i> Memproses OCR...
+          <img id="preview">
+
+          <div class="progress-track"><div class="progress-bar" id="progBar"></div></div>
+
+          <div id="loading">
+            <div class="spinner"></div>
+            <strong class="text-warning">Memproses OCR...</strong>
+            <p class="text-muted small mb-0">~10-20 detik (EasyOCR CPU)</p>
+          </div>
+
+          <button type="submit" class="ocr-btn" id="ocrBtn" style="display:none">
+            <i class="fas fa-microchip me-2"></i> PROSES OCR
+          </button>
+        </form>
+
+        <?php
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK):
+          $fname = 'captured_1_upload_' . date('Ymd_His') . '.jpg';
+          move_uploaded_file($_FILES['foto']['tmp_name'], __DIR__ . '/captures/' . $fname);
+
+          $ocr_url = "http://127.0.0.1:8093/ocr_path/1";
+          $ctx = stream_context_create(['http' => ['timeout' => 60]]);
+          $json = @file_get_contents($ocr_url, false, $ctx);
+          $data = $json ? json_decode($json, true) : null;
+        ?>
+        <div class="text-start mt-3">
+          <?php if ($data && empty($data['error'])): ?>
+            <?php if ($data['plate']): ?>
+              <div class="plate-result plate-found">
+                <i class="fas fa-check-circle me-2"></i> PLAT TERDETEKSI!<br>
+                <span style="font-size:2.8rem;letter-spacing:3px"><?= $data['plate'] ?></span><br>
+                <small>Confidence: <?= $data['confidence'] ?>%</small>
+              </div>
+            <?php else: ?>
+              <div class="plate-result plate-none">
+                <i class="fas fa-times-circle me-2"></i> TIDAK ADA PLAT<br>
+                <small>Coba foto lebih dekat / jelas / lurus</small>
+              </div>
+            <?php endif; ?>
+            <div class="text-center mt-2">
+              <img src="captures/<?= $fname ?>" style="max-width:100%;max-height:300px;border-radius:8px;">
+            </div>
+            <?php if (!empty($data['ocr_log'])): ?>
+              <div class="pre-box mt-2">
+                <strong class="text-info">Teks terdeteksi:</strong><br>
+                <?php foreach ($data['ocr_log'] as $l): ?>
+                  <span class="<?= strpos($l, 'plate=') !== false && strpos($l, 'plate=None') === false ? 'text-success' : 'text-muted' ?>"><?= htmlspecialchars(is_string($l)?$l:json_encode($l)) ?><br>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          <?php else: ?>
+            <div class="alert alert-danger"><?= ($data['error'] ?? 'Gagal proses OCR') ?></div>
+          <?php endif; ?>
         </div>
-      </div>
-
-      <div id="resultArea">
-        <div class="card">
-          <h6 class="fw-bold mb-3">Hasil Deteksi</h6>
-          <div id="plateResult"></div>
-          <div id="imageResult" class="text-center mt-2"></div>
-          <div id="ocrLog" class="pre-box mt-2" style="display:none"></div>
-        </div>
+        <?php endif; ?>
       </div>
 
       <div class="card">
-        <h6 class="fw-bold mb-2">Cara</h6>
+        <h6 class="fw-bold mb-2">Cara Pakai</h6>
         <ol class="text-muted small mb-0">
-          <li>Tap area upload → kamera HP terbuka</li>
-          <li>Foto plat nomor (dekat, jelas, lurus)</li>
-          <li>Tap <strong>centang ✓</strong> → <strong>LANGSUNG DIPROSES</strong></li>
-          <li>Hasil muncul otomatis</li>
+          <li>Klik <strong>AMBIL FOTO</strong> → kamera HP terbuka</li>
+          <li>Foto plat nomor, tap <strong>✓ centang</strong></li>
+          <li>Klik <strong>PROSES OCR</strong> → tunggu hasil</li>
         </ol>
       </div>
-
     </div>
   </div>
 </div>
 
 <script>
-var dz = document.getElementById('dropzone');
 var fi = document.getElementById('fileInput');
-var sb = document.getElementById('statusBar');
-var st = document.getElementById('statusText');
-var ra = document.getElementById('resultArea');
-var pr = document.getElementById('plateResult');
-var ir = document.getElementById('imageResult');
-var ol = document.getElementById('ocrLog');
-
-dz.onclick = function(){ fi.click(); };
+var prv = document.getElementById('preview');
+var ocrBtn = document.getElementById('ocrBtn');
+var loading = document.getElementById('loading');
+var progBar = document.getElementById('progBar');
 
 fi.onchange = function(e) {
   var f = e.target.files[0];
   if (!f) return;
-
-  // Show processing UI
-  dz.classList.add('processing');
-  dz.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:3rem;color:#ffab00"></i><p class="mt-2"><strong>Memproses...</strong></p>';
-  st.style.display = 'block';
-  ra.style.display = 'none';
-  sb.style.width = '20%';
-
-  // Upload via AJAX
-  var fd = new FormData();
-  fd.append('foto', f);
-
-  var xhr = new XMLHttpRequest();
-  xhr.open('POST', 'upload_ajax.php', true);
-
-  xhr.upload.onprogress = function(e) {
-    if (e.lengthComputable) sb.style.width = (10 + e.loaded / e.total * 30) + '%';
+  var r = new FileReader();
+  r.onload = function(ev) {
+    prv.src = ev.target.result;
+    prv.style.display = 'block';
+    ocrBtn.style.display = 'block';
+    ocrBtn.innerHTML = '<i class="fas fa-microchip me-2"></i> PROSES OCR (' + Math.round(f.size/1024) + 'KB)';
   };
-
-  xhr.onload = function() {
-    sb.style.width = '100%';
-    st.style.display = 'none';
-    dz.classList.remove('processing');
-
-    try {
-      var d = JSON.parse(xhr.responseText);
-    } catch(e) {
-      dz.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size:3rem;color:#ff5252"></i><p class="mt-2 text-danger">Gagal baca respons server</p>';
-      return;
-    }
-
-    if (d.error) {
-      dz.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size:3rem;color:#ff5252"></i><p class="mt-2 text-danger">' + esc(d.error) + '</p>';
-      return;
-    }
-
-    // Show result
-    if (d.plate) {
-      pr.innerHTML = '<div class="plate-result plate-found">'
-        + '<i class="fas fa-check-circle me-2"></i> PLAT TERDETEKSI!<br>'
-        + '<span style="font-size:2.8rem;letter-spacing:3px">' + d.plate + '</span><br>'
-        + '<small>Confidence: ' + d.confidence + '%</small></div>';
-    } else {
-      pr.innerHTML = '<div class="plate-result plate-none">'
-        + '<i class="fas fa-times-circle me-2"></i> TIDAK ADA PLAT<br>'
-        + '<small>Coba foto lebih dekat / jelas / lurus</small></div>';
-    }
-
-    if (d.image) {
-      ir.innerHTML = '<img src="captures/' + d.image + '" style="max-width:100%;max-height:300px;border-radius:8px;">';
-    }
-
-    if (d.ocr_log && d.ocr_log.length) {
-      ol.style.display = 'block';
-      ol.innerHTML = '<strong class="text-info">Teks terdeteksi:</strong><br>';
-      d.ocr_log.forEach(function(l) {
-        var isPlate = l.indexOf('plate=') > -1 && !l.includes('plate=None');
-        ol.innerHTML += '<span class="' + (isPlate ? 'plate' : 'no-plate') + '">'
-          + esc(typeof l === 'string' ? l : JSON.stringify(l)) + '</span><br>';
-      });
-    }
-
-    ra.style.display = 'block';
-    dz.innerHTML = '<i class="fas fa-camera" style="font-size:3rem;color:#ffab00"></i>'
-      + '<p class="mt-2 mb-0"><strong>Tap untuk foto lagi</strong></p>';
-    sb.style.width = '0%';
-  };
-
-  xhr.onerror = function() {
-    st.style.display = 'none';
-    dz.classList.remove('processing');
-    dz.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size:3rem;color:#ff5252"></i><p class="mt-2 text-danger">Koneksi gagal</p>';
-  };
-
-  xhr.send();
+  r.readAsDataURL(f);
 };
 
-function esc(s) { var d=document.createElement('div'); d.appendChild(document.createTextNode(s)); return d.innerHTML; }
+document.getElementById('uploadForm').onsubmit = function() {
+  ocrBtn.style.display = 'none';
+  loading.style.display = 'block';
+  progBar.style.width = '30%';
+  // Animate progress
+  var w = 30;
+  var iv = setInterval(function() { w += 2; if (w < 90) progBar.style.width = w + '%'; }, 1000);
+  setTimeout(function() { clearInterval(iv); progBar.style.width = '95%'; }, 15000);
+  return true;
+};
 </script>
 </body>
 </html>
