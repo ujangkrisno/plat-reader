@@ -205,6 +205,41 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path.startswith('/ocr_path/'):
+            import json
+            try:
+                cam_id = int(self.path.split('/')[-1])
+            except ValueError:
+                self.send_error(400)
+                return
+            # Load saved captured image
+            captured_dir = CAPTURE_DIR
+            candidates = [f for f in os.listdir(captured_dir) if f.startswith(f'captured_{cam_id}_') and f.endswith('.jpg')]
+            candidates.sort(reverse=True)
+            if not candidates:
+                self.send_error(404, 'No captured image')
+                return
+            fpath = os.path.join(captured_dir, candidates[0])
+            frame = cv2.imread(fpath)
+            if frame is None:
+                self.send_error(500, 'Cannot read image')
+                return
+            ts = datetime.datetime.now()
+            plate, conf, bbox = process_frame(frame, cam_id, ts)
+            resp = {'plate': plate, 'confidence': round(conf * 100, 1) if conf else 0, 'file': candidates[0]}
+            if plate and bbox:
+                resp['bbox'] = [[int(p[0]), int(p[1])] for p in bbox]
+            ocr_log = os.path.join(CAPTURE_DIR, f'ocr_{cam_id}.log')
+            if os.path.exists(ocr_log):
+                with open(ocr_log, 'r') as f:
+                    resp['ocr_log'] = [l.strip() for l in f.readlines()[-10:]]
+            body = json.dumps(resp).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == '/reload':
             reload_cameras()
             self.send_response(200)
