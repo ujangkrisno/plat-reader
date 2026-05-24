@@ -9,6 +9,7 @@ import mysql.connector
 import easyocr
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
+from urllib.parse import urlparse
 
 DB_HOST = '127.0.0.1'
 DB_USER = 'root'
@@ -65,6 +66,7 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 
 class StreamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        self.path = urlparse(self.path).path
         if self.path == '/':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
