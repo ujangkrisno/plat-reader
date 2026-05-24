@@ -48,11 +48,31 @@ class StreamHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()
-            html = '<html><head><meta charset="utf-8"><title>Camera Streams</title><style>body{background:#0f1923;color:#fff;font-family:sans-serif}img{max-width:100%%;border-radius:8px;margin:10px 0}.cam{background:#1a2a3a;padding:15px;border-radius:12px;margin:10px 0}h1{color:#00e5ff}</style></head><body><h1>Live Camera Streams</h1>'
+            html = '''<html><head><meta charset="utf-8"><title>Camera Streams</title>
+<style>
+body{background:#0f1923;color:#fff;font-family:sans-serif;margin:20px}
+.cam{background:#1a2a3a;border:1px solid #2a3a4a;border-radius:12px;padding:15px;margin:10px 0}
+.cam img{width:100%%;border-radius:8px;background:#000;min-height:200px}
+.cam h3{color:#00e5ff}
+.status{float:right;font-size:0.8rem;padding:2px 10px;border-radius:10px}
+.on{background:#00c853;color:#fff}
+.off{background:#ff5252;color:#fff}
+h1{color:#00e5ff}
+</style></head><body><h1>Live Camera Streams</h1>'''
             with lock:
                 for cid in sorted(cameras.keys()):
-                    html += f'<div class="cam"><h3>Camera {cid}</h3><img src="/stream/{cid}"></div>'
-            html += '</body></html>'
+                    html += f'<div class="cam"><h3>Camera {cid} <span class="status on" id="s{cid}">Live</span></h3><img id="i{cid}" src=""></div>'
+            html += '''<script>
+var cids=''' + str(sorted(cameras.keys())).replace(' ','') + ''';
+function load(cid){document.getElementById('i'+cid).src='/snapshot/'+cid+'?_='+Date.now();}
+function ok(cid){var s=document.getElementById('s'+cid);if(s){s.className='status on';s.textContent='Live';}}
+function fail(cid){var s=document.getElementById('s'+cid);if(s){s.className='status off';s.textContent='Off';}}
+cids.forEach(function(cid){
+var i=document.getElementById('i'+cid);
+if(i){i.onload=function(){ok(cid);};i.onerror=function(){fail(cid);};load(cid);}
+});
+setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
+</script></body></html>'''
             self.wfile.write(html.encode())
         elif self.path.startswith('/stream/'):
             try:
