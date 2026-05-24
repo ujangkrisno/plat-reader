@@ -1,12 +1,15 @@
 @echo off
-title Plat Reader - Camera Streamer
+title Plat Reader - All In One
 cd /d "%~dp0python"
 echo ============================================
-echo   Plat Reader - Camera Streamer
+echo   Plat Reader - Live View + Deteksi Plat
 echo ============================================
 echo.
-echo Stream tersedia di:
-echo   http://127.0.0.1:8093/
+echo Live view : http://127.0.0.1:8093/
+echo Dashboard : http://127.0.0.1:8092/
+echo.
+echo Live view + deteksi plat OTOMATIS berjalan.
+echo TIDAK perlu start_reader.bat lagi!
 echo.
 echo Tekan Ctrl+C untuk berhenti.
 echo ============================================
