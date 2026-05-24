@@ -23,6 +23,7 @@ PLATE_PATTERN = re.compile(r'[A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3}')
 detected_cache = {}
 CACHE_TIMEOUT = 300
 cameras = {}
+latest_frames = {}
 lock = threading.Lock()
 
 os.makedirs(CAPTURE_DIR, exist_ok=True)
@@ -60,6 +61,19 @@ def reload_cameras():
                 print(f"[STREAM] Camera {cam['id']} ({cam['nama']}) connected")
             else:
                 print(f"[STREAM] Camera {cam['id']} ({cam['nama']}) FAILED")
+
+def capture_loop(cam_id):
+    """Background thread: read frames continuously and store latest"""
+    while True:
+        with lock:
+            cap = cameras.get(cam_id)
+            if cap is None:
+                time.sleep(1)
+                continue
+            ret, frame = cap.read()
+        if ret:
+            latest_frames[cam_id] = frame
+        time.sleep(0.1)
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -103,11 +117,6 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             except ValueError:
                 self.send_error(404)
                 return
-            with lock:
-                cap = cameras.get(cam_id)
-                if cap is None:
-                    self.send_error(404, 'Camera not found')
-                    return
             self.send_response(200)
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
             self.send_header('Cache-Control', 'no-cache')
@@ -115,9 +124,8 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             self.end_headers()
             try:
                 while True:
-                    with lock:
-                        ret, frame = cap.read()
-                    if not ret:
+                    frame = latest_frames.get(cam_id)
+                    if frame is None:
                         time.sleep(0.5)
                         continue
                     _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
@@ -128,7 +136,7 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
                     self.wfile.write(b'Content-Type: image/jpeg\r\n')
                     self.wfile.write(f'Content-Length: {len(buf)}\r\n\r\n'.encode())
                     self.wfile.write(buf.tobytes())
-                    time.sleep(0.05)
+                    time.sleep(0.2)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
         elif self.path.startswith('/snapshot/'):
@@ -137,14 +145,9 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             except ValueError:
                 self.send_error(404)
                 return
-            with lock:
-                cap = cameras.get(cam_id)
-                if cap is None:
-                    self.send_error(404, 'Camera not found')
-                    return
-                ret, frame = cap.read()
-            if not ret:
-                self.send_error(500, 'Failed to capture frame')
+            frame = latest_frames.get(cam_id)
+            if frame is None:
+                self.send_error(500, 'No frame available')
                 return
             _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             self.send_response(200)
@@ -236,13 +239,8 @@ def detection_worker(cam):
     print(f"[DETECT] Starting detection for {name} (cam {cam_id})")
     while True:
         try:
-            with lock:
-                cap = cameras.get(cam_id)
-                if cap is None:
-                    time.sleep(5)
-                    continue
-                ret, frame = cap.read()
-            if not ret:
+            frame = latest_frames.get(cam_id)
+            if frame is None:
                 time.sleep(1)
                 continue
             timestamp = datetime.datetime.now()
@@ -270,10 +268,13 @@ if __name__ == '__main__':
             reload_cameras()
     threading.Thread(target=reload_loop, daemon=True).start()
 
+    # Start capture threads (continuous frame reading)
+    for cam in get_cameras():
+        threading.Thread(target=capture_loop, args=(cam['id'],), daemon=True).start()
+
     # Start detection threads for each camera
     for cam in get_cameras():
-        t = threading.Thread(target=detection_worker, args=(cam,), daemon=True)
-        t.start()
+        threading.Thread(target=detection_worker, args=(cam,), daemon=True).start()
 
     # Start HTTP server
     server = ThreadingHTTPServer(('0.0.0.0', STREAM_PORT), StreamHandler)
