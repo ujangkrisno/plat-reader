@@ -80,6 +80,38 @@ $q = mysqli_query($con, "SELECT p.*, c.nama as camera, c.lokasi FROM plat_nomor 
         <div class="col-md-3"><div class="stat-card text-center"><div class="text-primary small">Hari Ini</div><div class="angka text-primary" id="todayCount"><?= $stat['total'] ?></div></div></div>
     </div>
 
+    <!-- Daftar Kamera -->
+    <div class="d-flex justify-content-between align-items-center mb-2 mt-4">
+        <h6 class="fw-bold"><i class="fas fa-video me-2"></i>Daftar Kamera</h6>
+        <a href="cameras.php" class="btn btn-sm btn-outline-info"><i class="fas fa-plus"></i> Kelola</a>
+    </div>
+    <div class="row g-3 mb-4">
+        <?php
+        $kc = mysqli_query($con, "SELECT c.*, (SELECT COUNT(*) FROM plat_nomor WHERE camera_id=c.id AND DATE(created_at)='$filter_tgl') as hari_ini FROM cameras c ORDER BY c.aktif DESC, c.nama ASC");
+        while ($cam = mysqli_fetch_assoc($kc)):
+        ?>
+        <div class="col-md-4 col-lg-3">
+            <div class="card-plat p-3 h-100">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong class="text-light"><?= $cam['nama'] ?></strong>
+                        <div class="meta mt-1"><?= $cam['lokasi'] ?: '-' ?></div>
+                    </div>
+                    <span class="badge bg-<?= $cam['aktif'] ? 'success' : 'secondary' ?>"><?= $cam['aktif'] ? 'Aktif' : 'Nonaktif' ?></span>
+                </div>
+                <hr class="border-secondary my-2">
+                <div class="d-flex justify-content-between">
+                    <small class="text-muted">Hari ini</small>
+                    <small class="text-info fw-bold"><?= $cam['hari_ini'] ?> plat</small>
+                </div>
+                <div class="mt-1">
+                    <small class="text-muted" style="word-break:break-all;font-size:0.7rem;"><?= $cam['url'] ?></small>
+                </div>
+            </div>
+        </div>
+        <?php endwhile; ?>
+    </div>
+
     <!-- Recent Plates -->
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h6 class="fw-bold">Riwayat Plat</h6>
