@@ -185,12 +185,12 @@ def camera_worker(cam):
 
 # ─── Main ──────────────────────────────────────────────────────
 def main():
+    global INTERVAL
     parser = argparse.ArgumentParser(description='Plat Reader - License Plate Recognition')
     parser.add_argument('--interval', type=int, default=INTERVAL, help='Capture interval in seconds')
     parser.add_argument('--camera', type=int, default=None, help='Specific camera ID to run')
     args = parser.parse_args()
 
-    global INTERVAL
     INTERVAL = args.interval
 
     print("=" * 50)
