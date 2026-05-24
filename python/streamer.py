@@ -174,6 +174,37 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             self.send_header('Content-Length', str(len(buf)))
             self.end_headers()
             self.wfile.write(buf.tobytes())
+        elif self.path.startswith('/ocr_now/'):
+            try:
+                cam_id = int(self.path.split('/')[-1])
+            except ValueError:
+                self.send_error(400)
+                return
+            frame = latest_frames.get(cam_id)
+            if frame is None:
+                self.send_error(500, 'No frame')
+                return
+            import json
+            ts = datetime.datetime.now()
+            plate, conf, bbox = process_frame(frame.copy(), cam_id, ts)
+            resp = {'plate': plate, 'confidence': round(conf * 100, 1) if conf else 0}
+            if plate:
+                resp['bbox'] = [[int(p[0]), int(p[1])] for p in bbox] if bbox else []
+            # Also return all OCR text for debugging
+            ocr_log = os.path.join(CAPTURE_DIR, f'ocr_{cam_id}.log')
+            recent = []
+            if os.path.exists(ocr_log):
+                with open(ocr_log, 'r') as f:
+                    lines = f.readlines()
+                    recent = [l.strip() for l in lines[-10:]]
+            resp['ocr_log'] = recent
+            body = json.dumps(resp).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == '/reload':
             reload_cameras()
             self.send_response(200)
