@@ -1,7 +1,9 @@
 <?php
 $title = 'Live Camera';
 include 'config/database.php';
-$q = mysqli_query($con, "SELECT * FROM cameras WHERE aktif=1 ORDER BY id");
+$rows = mysqli_query($con, "SELECT * FROM cameras WHERE aktif=1 ORDER BY id");
+$cameras = [];
+while ($r = mysqli_fetch_assoc($rows)) $cameras[] = $r;
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -15,11 +17,12 @@ $q = mysqli_query($con, "SELECT * FROM cameras WHERE aktif=1 ORDER BY id");
         .navbar { background:linear-gradient(90deg,#0d2137,#1a3a5c); }
         .cam-card { background:#1a2a3a; border:1px solid #2a3a4a; border-radius:12px; overflow:hidden; }
         .cam-card .cam-header { padding:10px 15px; border-bottom:1px solid #2a3a4a; }
-        .cam-card img { width:100%; display:block; }
-        .offline { opacity:0.5; filter:grayscale(1); }
+        .cam-card img { width:100%; display:block; background:#000; min-height:200px; object-fit:contain; }
+        .offline { opacity:0.4; filter:grayscale(1); }
         .badge-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
         .badge-dot.online { background:#00e676; }
         .badge-dot.offline { background:#ff5252; }
+        .cam-error { padding:40px; text-align:center; color:#667; }
     </style>
 </head>
 <body>
@@ -35,21 +38,73 @@ $q = mysqli_query($con, "SELECT * FROM cameras WHERE aktif=1 ORDER BY id");
     </div>
 
     <div class="row g-3" id="camGrid">
-        <?php while ($cam = mysqli_fetch_assoc($q)): ?>
+        <?php foreach ($cameras as $cam): ?>
         <div class="col-md-6 col-lg-4">
-            <div class="cam-card">
+            <div class="cam-card" id="card_<?= $cam['id'] ?>">
                 <div class="cam-header d-flex justify-content-between align-items-center">
                     <div>
                         <strong><?= $cam['nama'] ?></strong>
                         <small class="text-muted d-block"><?= $cam['lokasi'] ?: '-' ?></small>
                     </div>
-                    <span class="badge bg-success" id="status_<?= $cam['id'] ?>"><span class="badge-dot online"></span>Live</span>
+                    <span class="badge bg-secondary" id="status_<?= $cam['id'] ?>"><span class="badge-dot offline"></span>Loading...</span>
                 </div>
-                <img id="stream_<?= $cam['id'] ?>" src="http://127.0.0.1:8093/stream/<?= $cam['id'] ?>" onerror="this.closest('.cam-card').classList.add('offline'); document.getElementById('status_<?= $cam['id'] ?>').className='badge bg-danger'; document.getElementById('status_<?= $cam['id'] ?>').innerHTML='<span class=\"badge-dot offline\"></span>Offline'">
+                <img id="stream_<?= $cam['id'] ?>" src="" data-cam="<?= $cam['id'] ?>" style="cursor:pointer" onclick="this.src=''">
             </div>
         </div>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
     </div>
 </div>
+
+<script>
+var cams = <?= json_encode(array_map(function($c){return $c['id'];}, $cameras)) ?>;
+
+function loadSnapshot(camId) {
+    var img = document.getElementById('stream_' + camId);
+    if (!img) return;
+    var ts = new Date().getTime();
+    img.src = 'http://127.0.0.1:8093/snapshot/' + camId + '?_=' + ts;
+}
+
+function onImgLoad(camId) {
+    var card = document.getElementById('card_' + camId);
+    var status = document.getElementById('status_' + camId);
+    if (card) card.classList.remove('offline');
+    if (status) {
+        status.className = 'badge bg-success';
+        status.innerHTML = '<span class="badge-dot online"></span>Live';
+    }
+}
+
+function onImgError(camId) {
+    var card = document.getElementById('card_' + camId);
+    var status = document.getElementById('status_' + camId);
+    if (card) card.classList.add('offline');
+    if (status) {
+        status.className = 'badge bg-danger';
+        status.innerHTML = '<span class="badge-dot offline"></span>Offline';
+    }
+}
+
+cams.forEach(function(camId) {
+    var img = document.getElementById('stream_' + camId);
+    if (img) {
+        img.onload = function() { onImgLoad(camId); };
+        img.onerror = function() { onImgError(camId); };
+        loadSnapshot(camId);
+    }
+});
+
+setInterval(function() {
+    cams.forEach(function(camId) {
+        var status = document.getElementById('status_' + camId);
+        if (status && status.className.indexOf('bg-success') !== -1) {
+            loadSnapshot(camId);
+        } else {
+            var ts = new Date().getTime();
+            if (ts % 10000 < 2000) loadSnapshot(camId);
+        }
+    });
+}, 2000);
+</script>
 </body>
 </html>

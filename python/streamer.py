@@ -89,6 +89,29 @@ class StreamHandler(BaseHTTPRequestHandler):
                     time.sleep(0.05)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
+        elif self.path.startswith('/snapshot/'):
+            try:
+                cam_id = int(self.path.split('/')[-1])
+            except ValueError:
+                self.send_error(404)
+                return
+            with lock:
+                cap = cameras.get(cam_id)
+                if cap is None:
+                    self.send_error(404, 'Camera not found')
+                    return
+                ret, frame = cap.read()
+            if not ret:
+                self.send_error(500, 'Failed to capture frame')
+                return
+            _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/jpeg')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Content-Length', str(len(buf)))
+            self.end_headers()
+            self.wfile.write(buf.tobytes())
         elif self.path == '/reload':
             reload_cameras()
             self.send_response(200)
