@@ -19,7 +19,6 @@ STREAM_PORT = 8093
 DETECT_INTERVAL = 5
 CAPTURE_DIR = os.path.join(os.path.dirname(__file__), '..', 'captures')
 MIN_CONFIDENCE = 0.4
-PLATE_PATTERN = re.compile(r'[A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3}')
 detected_cache = {}
 CACHE_TIMEOUT = 300
 cameras = {}
@@ -188,15 +187,13 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
 
 # ─── Plate Detection ──────────────────────────────────────────
 
-def clean_plate_text(text):
-    text = text.upper().strip()
-    text = re.sub(r'[^A-Z0-9]', '', text)
-    return text
+PLATE_FULL = re.compile(r'[A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3}')
 
 def extract_plate(text):
-    matches = PLATE_PATTERN.findall(text.upper())
-    if matches:
-        return matches[0].replace(' ', '')
+    """Match plate pattern on raw text without stripping."""
+    m = PLATE_FULL.search(text.upper())
+    if m:
+        return m.group().replace(' ', '')
     return None
 
 def save_plate(camera_id, plat, confidence, filename):
@@ -233,22 +230,52 @@ def process_frame(frame, camera_id, timestamp):
     best_plate = None
     best_conf = 0
     best_bbox = None
+
+    # Sort left-to-right by bbox x-center for correct merge order
+    results.sort(key=lambda r: sum(p[0] for p in r[0]) / 4)
+
+    # Strategy 1: check each OCR block individually
     for bbox, text, conf in results:
         if conf < MIN_CONFIDENCE:
             continue
-        cleaned = clean_plate_text(text)
-        plate = extract_plate(cleaned)
+        plate = extract_plate(text)
         if plate and conf > best_conf:
             best_plate = plate
             best_conf = conf
             best_bbox = bbox
-    if results:
-        log = os.path.join(CAPTURE_DIR, f'ocr_{camera_id}.log')
-        with open(log, 'a') as f:
-            for _, t, c in results:
-                if c >= MIN_CONFIDENCE:
-                    p = extract_plate(clean_plate_text(t))
-                    f.write(f"{timestamp.strftime('%H:%M:%S')} \"{t}\" conf={c:.2f} plate={p}\n")
+
+    # Strategy 2: merge adjacent blocks on same text line
+    for start in range(len(results)):
+        for end in range(start + 1, min(start + 4, len(results))):
+            group = results[start:end + 1]
+            # Check if blocks are on the same line (y difference < 30px)
+            y_positions = [b[0][1] for b, _, _ in group]
+            if max(y_positions) - min(y_positions) > 30:
+                continue
+            texts = [t for _, t, _ in group]
+            combined = ' '.join(texts)
+            plate = extract_plate(combined)
+            if plate:
+                avg_conf = sum(c * len(t) for _, t, c in group) / max(sum(len(t) for _, t, _ in group), 1)
+                if avg_conf > best_conf:
+                    best_plate = plate
+                    best_conf = avg_conf
+                    # Use bbox that covers all merged blocks
+                    all_pts = [p for b, _, _ in group for p in b]
+                    xs = [p[0] for p in all_pts]
+                    ys = [p[1] for p in all_pts]
+                    best_bbox = [[xs[0], ys[0]], [xs[0], ys[-1]], [xs[-1], ys[-1]], [xs[-1], ys[0]]]
+
+    # Log all detections
+    log = os.path.join(CAPTURE_DIR, f'ocr_{camera_id}.log')
+    with open(log, 'a') as f:
+        ts_str = timestamp.strftime('%H:%M:%S')
+        f.write(f"--- {ts_str} ---\n")
+        for _, t, c in results:
+            if c >= MIN_CONFIDENCE:
+                p = extract_plate(t)
+                f.write(f"  \"{t}\" conf={c:.2f} plate={p}\n")
+
     if best_plate:
         ts = timestamp.strftime('%Y%m%d_%H%M%S')
         fname = f"plat_{ts}_{camera_id}_{best_plate}.jpg"
@@ -257,7 +284,6 @@ def process_frame(frame, camera_id, timestamp):
         saved = save_plate(camera_id, best_plate, best_conf * 100, fname)
         if saved:
             print(f"[DETECT] CAM {camera_id} \u2192 {best_plate} ({best_conf*100:.1f}%)")
-            # Store bbox for live view drawing
             detected_plates[camera_id] = {'bbox': best_bbox, 'text': best_plate, 'time': time.time()}
         return best_plate, best_conf, best_bbox
     return None, 0, None
@@ -267,6 +293,7 @@ def detection_worker(cam):
     name = cam['nama']
     print(f"[DETECT] Starting detection for {name} (cam {cam_id})")
     log = os.path.join(CAPTURE_DIR, f'detect_{cam_id}.log')
+    debug_idx = 0
     while True:
         try:
             frame = latest_frames.get(cam_id)
@@ -274,9 +301,11 @@ def detection_worker(cam):
                 time.sleep(1)
                 continue
             ts = datetime.datetime.now()
-            # Simpan frame sebagai debug
-            fname = f"debug_{ts.strftime('%Y%m%d_%H%M%S')}_cam{cam_id}.jpg"
-            cv2.imwrite(os.path.join(CAPTURE_DIR, fname), frame)
+            # Simpan debug frame setiap 12 detik (alternate frames) untuk hemat disk
+            debug_idx += 1
+            if debug_idx % 3 == 0:
+                fname = f"debug_{ts.strftime('%Y%m%d_%H%M%S')}_cam{cam_id}.jpg"
+                cv2.imwrite(os.path.join(CAPTURE_DIR, fname), frame)
             process_frame(frame, cam_id, ts)
             time.sleep(DETECT_INTERVAL)
         except KeyboardInterrupt:
