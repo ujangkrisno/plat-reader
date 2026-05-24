@@ -68,7 +68,7 @@ if (isset($_GET['edit'])) {
                 </div>
                 <div class="col-md-5">
                     <label class="form-label">URL Stream</label>
-                    <input type="text" name="url" class="form-control font-monospace" value="<?= $edit['url'] ?? '' ?>" placeholder="rtsp://user:pass@ip:554/stream atau http://ip:8080/video" required>
+                    <input type="text" name="url" class="form-control font-monospace" value="<?= $edit['url'] ?? '' ?>" placeholder="rtsp://... atau http://... atau 0 untuk webcam laptop" required>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Lokasi</label>
@@ -116,6 +116,7 @@ if (isset($_GET['edit'])) {
             <tr><td><strong>IP Camera (CCTV)</strong></td><td class="text-info">rtsp://username:password@192.168.1.100:554/stream1</td></tr>
             <tr><td><strong>HP Android (IP Webcam)</strong></td><td class="text-info">http://192.168.1.20:8080/video</td></tr>
             <tr><td><strong>HP Android (RTSP)</strong></td><td class="text-info">rtsp://192.168.1.20:554/live</td></tr>
+            <tr><td><strong>Laptop Webcam</strong></td><td class="text-info">0</td></tr>
         </table>
         <hr class="border-secondary">
         <p class="text-muted mb-0" style="font-size:0.8rem;">

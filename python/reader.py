@@ -140,6 +140,11 @@ def camera_worker(cam):
     retry_count = 0
     max_retries = 10
 
+    # Laptop webcam jika URL = "0"
+    is_webcam = (url.strip() == '0')
+    if is_webcam:
+        url = 0
+
     while True:
         try:
             if cap is None or not cap.isOpened():
