@@ -73,7 +73,7 @@ class StreamHandler(BaseHTTPRequestHandler):
 <style>
 body{background:#0f1923;color:#fff;font-family:sans-serif;margin:20px}
 .cam{background:#1a2a3a;border:1px solid #2a3a4a;border-radius:12px;padding:15px;margin:10px 0}
-.cam img{width:100%%;border-radius:8px;background:#000;min-height:200px}
+.cam img{width:100%;border-radius:8px;background:#000;min-height:200px}
 .cam h3{color:#00e5ff}
 .status{float:right;font-size:0.8rem;padding:2px 10px;border-radius:10px}
 .on{background:#00c853;color:#fff}
