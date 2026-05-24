@@ -24,6 +24,8 @@ detected_cache = {}
 CACHE_TIMEOUT = 300
 cameras = {}
 latest_frames = {}
+annotated_frames = {}
+detected_plates = {}
 lock = threading.Lock()
 
 os.makedirs(CAPTURE_DIR, exist_ok=True)
@@ -63,17 +65,20 @@ def reload_cameras():
                 print(f"[STREAM] Camera {cam['id']} ({cam['nama']}) FAILED")
 
 def capture_loop(cam_id):
-    """Background thread: read frames continuously and store latest"""
+    """Background thread: read frames continuously"""
     while True:
-        with lock:
-            cap = cameras.get(cam_id)
-            if cap is None:
-                time.sleep(1)
-                continue
-            ret, frame = cap.read()
-        if ret:
-            latest_frames[cam_id] = frame
-        time.sleep(0.1)
+        try:
+            with lock:
+                cap = cameras.get(cam_id)
+                if cap is None:
+                    time.sleep(1)
+                    continue
+                ret, frame = cap.read()
+            if ret:
+                latest_frames[cam_id] = frame
+        except Exception as e:
+            print(f"[CAPTURE] cam {cam_id} error: {e}")
+        time.sleep(0.05)
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -149,6 +154,15 @@ setInterval(function(){cids.forEach(function(cid){load(cid);});},2000);
             if frame is None:
                 self.send_error(500, 'No frame available')
                 return
+            # Draw detection box on the frame
+            plate_info = detected_plates.get(cam_id)
+            if plate_info and (time.time() - plate_info['time']) < 10:
+                pts = plate_info['bbox']
+                if pts and len(pts) >= 4:
+                    pts_int = [(int(p[0]), int(p[1])) for p in pts]
+                    cv2.polylines(frame, [pts_int], True, (0, 255, 0), 3)
+                    cv2.putText(frame, plate_info['text'], (pts_int[0][0], pts_int[0][1]-10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
             _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             self.send_response(200)
             self.send_header('Content-Type', 'image/jpeg')
@@ -214,6 +228,7 @@ def process_frame(frame, camera_id, timestamp):
     results = get_ocr().readtext(frame)
     best_plate = None
     best_conf = 0
+    best_bbox = None
     for bbox, text, conf in results:
         if conf < MIN_CONFIDENCE:
             continue
@@ -222,6 +237,14 @@ def process_frame(frame, camera_id, timestamp):
         if plate and conf > best_conf:
             best_plate = plate
             best_conf = conf
+            best_bbox = bbox
+    if results:
+        log = os.path.join(CAPTURE_DIR, f'ocr_{camera_id}.log')
+        with open(log, 'a') as f:
+            for _, t, c in results:
+                if c >= MIN_CONFIDENCE:
+                    p = extract_plate(clean_plate_text(t))
+                    f.write(f"{timestamp.strftime('%H:%M:%S')} \"{t}\" conf={c:.2f} plate={p}\n")
     if best_plate:
         ts = timestamp.strftime('%Y%m%d_%H%M%S')
         fname = f"plat_{ts}_{camera_id}_{best_plate}.jpg"
@@ -230,21 +253,27 @@ def process_frame(frame, camera_id, timestamp):
         saved = save_plate(camera_id, best_plate, best_conf * 100, fname)
         if saved:
             print(f"[DETECT] CAM {camera_id} \u2192 {best_plate} ({best_conf*100:.1f}%)")
-        return best_plate, best_conf
-    return None, 0
+            # Store bbox for live view drawing
+            detected_plates[camera_id] = {'bbox': best_bbox, 'text': best_plate, 'time': time.time()}
+        return best_plate, best_conf, best_bbox
+    return None, 0, None
 
 def detection_worker(cam):
     cam_id = cam['id']
     name = cam['nama']
     print(f"[DETECT] Starting detection for {name} (cam {cam_id})")
+    log = os.path.join(CAPTURE_DIR, f'detect_{cam_id}.log')
     while True:
         try:
             frame = latest_frames.get(cam_id)
             if frame is None:
                 time.sleep(1)
                 continue
-            timestamp = datetime.datetime.now()
-            process_frame(frame, cam_id, timestamp)
+            ts = datetime.datetime.now()
+            # Simpan frame sebagai debug
+            fname = f"debug_{ts.strftime('%Y%m%d_%H%M%S')}_cam{cam_id}.jpg"
+            cv2.imwrite(os.path.join(CAPTURE_DIR, fname), frame)
+            process_frame(frame, cam_id, ts)
             time.sleep(DETECT_INTERVAL)
         except KeyboardInterrupt:
             break
