@@ -47,6 +47,7 @@ $q = mysqli_query($con, "SELECT p.*, c.nama as camera, c.lokasi FROM plat_nomor 
         <a href="cameras.php" class="btn btn-outline-light btn-sm me-2"><i class="fas fa-video"></i> Kamera</a>
         <a href="live.php" class="btn btn-outline-light btn-sm me-2"><i class="fas fa-eye"></i> Live</a>
         <a href="ocr_test.php" class="btn btn-outline-light btn-sm me-2"><i class="fas fa-microscope"></i> OCR Test</a>
+        <a href="upload_test.php" class="btn btn-outline-light btn-sm me-2"><i class="fas fa-upload"></i> Upload Foto</a>
         <a href="laporan.php" class="btn btn-outline-light btn-sm"><i class="fas fa-chart-bar"></i> Laporan</a>
     </div>
 </nav>
