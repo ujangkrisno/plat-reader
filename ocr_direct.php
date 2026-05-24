@@ -14,38 +14,22 @@ if (!$files) {
 usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
 $fpath = $files[0];
 
-// Call Python OCR directly
-$python = 'python';
+// Call Python OCR directly (redirect stderr to avoid buffer deadlock on Windows)
+$python = 'C:\Users\aero\AppData\Local\Programs\Python\Python310\python.exe';
 $script = __DIR__ . '/python/ocr_file.py';
-$cmd = sprintf('"%s" "%s" "%s"', $python, $script, $fpath);
+$cmd = sprintf('"%s" "%s" "%s" 2>NUL', $python, $script, $fpath);
 
-$descriptorspec = [
-    0 => ['pipe', 'r'],
-    1 => ['pipe', 'w'],
-    2 => ['pipe', 'w'],
-];
-
-$proc = proc_open($cmd, $descriptorspec, $pipes);
-if (!is_resource($proc)) {
-    echo json_encode(['error' => 'Failed to start Python process']);
-    exit;
-}
-
-fclose($pipes[0]);
-$stdout = stream_get_contents($pipes[1]);
-$stderr = stream_get_contents($pipes[2]);
-fclose($pipes[1]);
-fclose($pipes[2]);
-$ret = proc_close($proc);
+$stdout = shell_exec($cmd);
+$ret = $stdout !== null ? 0 : 1;
 
 if ($ret !== 0) {
-    echo json_encode(['error' => 'Python error: ' . trim($stderr)]);
+    echo json_encode(['error' => 'Gagal menjalankan Python. Cek PATH atau instalasi Python.']);
     exit;
 }
 
 $data = json_decode($stdout, true);
 if (!$data) {
-    echo json_encode(['error' => 'Invalid output: ' . substr($stdout, 0, 200)]);
+    echo json_encode(['error' => 'Output tidak valid: ' . substr($stdout, 0, 200)]);
     exit;
 }
 

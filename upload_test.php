@@ -11,38 +11,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['foto'])) {
     if ($file['error'] === UPLOAD_ERR_OK) {
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
-            // Konversi ke JPG murni (hapus alpha channel jika PNG)
-            $img = @imagecreatefromstring(file_get_contents($file['tmp_name']));
-            if ($img) {
-                $fname = 'captured_1_upload_' . date('Ymd_His') . '.jpg';
-                $fpath = __DIR__ . '/captures/' . $fname;
-                imagejpeg($img, $fpath, 95);
-                imagedestroy($img);
+            // Simpan file langsung (streamer/python handle format)
+            $fname = 'captured_1_upload_' . date('Ymd_His') . '.jpg';
+            $fpath = __DIR__ . '/captures/' . $fname;
+            move_uploaded_file($file['tmp_name'], $fpath);
 
-                // Call Python OCR directly via PHP (bypass streamer)
-                $ocr_url = "http://127.0.0.1:8092/ocr_direct.php?cam=1";
-                $ctx = stream_context_create(['http' => ['timeout' => 120]]);
-                $json = @file_get_contents($ocr_url, false, $ctx);
+            // Call streamer OCR endpoint (port 8093) - proven working
+            $ocr_url = "http://127.0.0.1:8093/ocr_path/1";
+            $ctx = stream_context_create(['http' => ['timeout' => 60]]);
+            $json = @file_get_contents($ocr_url, false, $ctx);
 
-                if ($json) {
-                    $data = json_decode($json, true);
-                    if ($data && empty($data['error'])) {
-                        if ($data['plate']) {
-                            $plate_found = $data['plate'];
-                            $conf = $data['confidence'];
-                        }
-                        if (!empty($data['ocr_log'])) {
-                            $ocr_texts = $data['ocr_log'];
-                        }
-                        $result = $fname;
-                    } else {
-                        $result = ($data['error'] ?? 'Unknown error');
+            if ($json) {
+                $data = json_decode($json, true);
+                if ($data && empty($data['error'])) {
+                    if ($data['plate']) {
+                        $plate_found = $data['plate'];
+                        $conf = $data['confidence'];
                     }
+                    if (!empty($data['ocr_log'])) {
+                        $ocr_texts = $data['ocr_log'];
+                    }
+                    $result = $fname;
                 } else {
-                    $result = 'Gagal proses OCR (PHP->Python)';
+                    $result = ($data['error'] ?? 'Unknown error');
                 }
             } else {
-                $result = 'Gagal membaca file gambar';
+                $result = 'Gagal hubungi streamer OCR (port 8093)';
             }
         } else {
             $result = 'Format file tidak didukung (hanya JPG/PNG)';
