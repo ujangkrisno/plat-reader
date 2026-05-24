@@ -87,6 +87,10 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 class StreamHandler(BaseHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        super().end_headers()
+
     def do_GET(self):
         self.path = urlparse(self.path).path
         if self.path == '/':
