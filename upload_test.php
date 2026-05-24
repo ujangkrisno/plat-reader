@@ -76,14 +76,14 @@ body{background:#0f1923;color:#fff;font-family:'Segoe UI',sans-serif}
     <div class="col-md-8">
       <div class="card text-center">
         <h5 class="fw-bold mb-3"><i class="fas fa-camera-retro me-2"></i>Test OCR dengan Foto HP</h5>
-        <p class="text-muted">Ambil foto plat nomor pakai HP, upload, langsung deteksi.</p>
+        <p class="text-muted">Akses dari HP: <code style="color:#ffab00">http://192.168.1.12:8092/upload_test.php</code><br>Buka di Chrome HP, langsung bisa foto pakai kamera belakang.</p>
 
         <form method="post" enctype="multipart/form-data">
           <label class="upload-area d-block" id="dropzone">
             <i class="fas fa-cloud-upload-alt" style="font-size:3rem;color:#ffab00"></i>
             <p class="mt-2 mb-0"><strong>Klik untuk pilih foto</strong></p>
             <small class="text-muted">atau drag & drop (JPG/PNG)</small>
-            <input type="file" name="foto" accept="image/jpeg,image/png" required style="display:none" id="fileInput">
+            <input type="file" name="foto" accept="image/*" capture="environment" required style="display:none" id="fileInput">
           </label>
           <div id="preview" class="mt-3" style="display:none">
             <img id="previewImg" style="max-width:100%;max-height:400px;border-radius:8px;">
