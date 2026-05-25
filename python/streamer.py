@@ -314,6 +314,17 @@ def ensure_3channel(img):
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
     return img
 
+OVERLAY_TOP = 55  # DroidCam overlay height in pixels
+
+def has_content(frame):
+    """Check if frame has enough non-uniform content to contain a plate."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if gray.mean() < 25:
+        return False
+    edges = cv2.Canny(gray[OVERLAY_TOP:, :], 50, 150)
+    edge_ratio = (edges > 0).sum() / edges.size
+    return edge_ratio > 0.002
+
 def process_frame(frame, camera_id, timestamp):
     frame = ensure_3channel(frame)
     if frame is None: return None, 0, None
@@ -327,6 +338,9 @@ def process_frame(frame, camera_id, timestamp):
     if mean_brightness < 80:
         alpha = 120 / max(mean_brightness, 1)
         frame = cv2.convertScaleAbs(frame, alpha=min(alpha, 3.0), beta=20)
+    # Skip OCR if frame is too empty
+    if not has_content(frame):
+        return None, 0, None
     results = get_ocr().readtext(frame)
     best_plate = None
     best_conf = 0
@@ -335,8 +349,15 @@ def process_frame(frame, camera_id, timestamp):
     # Sort left-to-right by bbox x-center for correct merge order
     results.sort(key=lambda r: sum(p[0] for p in r[0]) / 4)
 
-    # Strategy 1: check each OCR block individually
+    # Filter out blocks in overlay zone (top of frame)
+    filtered = []
     for bbox, text, conf in results:
+        y_min = min(p[1] for p in bbox)
+        if y_min > OVERLAY_TOP:
+            filtered.append((bbox, text, conf))
+
+    # Strategy 1: check each OCR block individually
+    for bbox, text, conf in filtered:
         if conf < MIN_CONFIDENCE:
             continue
         plate = extract_plate(text)
@@ -346,10 +367,9 @@ def process_frame(frame, camera_id, timestamp):
             best_bbox = bbox
 
     # Strategy 2: merge adjacent blocks on same text line
-    for start in range(len(results)):
-        for end in range(start + 1, min(start + 4, len(results))):
-            group = results[start:end + 1]
-            # Check if blocks are on the same line (y difference < 30px)
+    for start in range(len(filtered)):
+        for end in range(start + 1, min(start + 4, len(filtered))):
+            group = filtered[start:end + 1]
             y_positions = [b[0][1] for b, _, _ in group]
             if max(y_positions) - min(y_positions) > 30:
                 continue
@@ -361,7 +381,6 @@ def process_frame(frame, camera_id, timestamp):
                 if avg_conf > best_conf:
                     best_plate = plate
                     best_conf = avg_conf
-                    # Use bbox that covers all merged blocks
                     all_pts = [p for b, _, _ in group for p in b]
                     xs = [p[0] for p in all_pts]
                     ys = [p[1] for p in all_pts]
@@ -372,12 +391,12 @@ def process_frame(frame, camera_id, timestamp):
     with open(log, 'a') as f:
         ts_str = timestamp.strftime('%H:%M:%S')
         f.write(f"--- {ts_str} ---\n")
-        for _, t, c in results:
+        for _, t, c in filtered:
             if c >= MIN_CONFIDENCE:
                 p = extract_plate(t)
                 f.write(f"  \"{t}\" conf={c:.2f} plate={p}\n")
 
-    if best_plate:
+    if best_plate and best_conf >= 0.6:
         ts = timestamp.strftime('%Y%m%d_%H%M%S')
         fname = f"plat_{ts}_{camera_id}_{best_plate}.jpg"
         fpath = os.path.join(CAPTURE_DIR, fname)
