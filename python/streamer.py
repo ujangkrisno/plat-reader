@@ -58,6 +58,9 @@ def reload_cameras():
             url = cam['url'].strip()
             cap = cv2.VideoCapture(0 if url == '0' else url)
             if cap.isOpened():
+                if url == '0':
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                 cameras[cam['id']] = cap
                 print(f"[STREAM] Camera {cam['id']} ({cam['nama']}) connected")
             else:
@@ -329,7 +332,7 @@ def process_frame(frame, camera_id, timestamp):
     frame = ensure_3channel(frame)
     if frame is None: return None, 0, None
     h, w = frame.shape[:2]
-    if w > 1280:
+    if w != 1280:
         scale = 1280 / w
         frame = cv2.resize(frame, (int(w*scale), int(h*scale)))
     # Auto brightness/contrast for dark frames
